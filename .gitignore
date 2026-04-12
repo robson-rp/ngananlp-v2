@@ -1,0 +1,18 @@
+# Dataset (guardado no Hugging Face)
+data/
+
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Checkpoints e adaptadores locais
+checkpoints/
+lora_adapter/
+
+# Logs
+*.log
+nohup.out
