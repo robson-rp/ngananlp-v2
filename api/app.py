@@ -1,12 +1,12 @@
 import os
 import torch
 from contextlib import asynccontextmanager
-from typing import Iterator, Optional
+from typing import Optional
 
 from elevenlabs.client import ElevenLabs
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, field_validator
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from peft import PeftModel
@@ -179,11 +179,10 @@ def translate(req: TranslateRequest):
 @app.post(
     "/speak",
     summary="Text-to-speech via ElevenLabs",
-    response_class=StreamingResponse,
     responses={200: {"content": {"audio/mpeg": {}}}},
 )
 def speak(req: SpeakRequest):
-    """Convert text to speech and stream back an MP3 audio file."""
+    """Convert text to speech and return a complete MP3 audio file."""
     if not ELEVENLABS_API_KEY:
         raise HTTPException(status_code=503, detail="ELEVENLABS_API_KEY not configured")
 
@@ -194,15 +193,17 @@ def speak(req: SpeakRequest):
 
     client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
-    audio_chunks: Iterator[bytes] = client.text_to_speech.convert(
+    audio_chunks = client.text_to_speech.convert(
         text=req.text,
         voice_id=voice_id,
         model_id="eleven_v3",
         output_format="mp3_44100_128",
     )
 
-    return StreamingResponse(
-        audio_chunks,
+    audio_bytes = b"".join(audio_chunks)
+
+    return Response(
+        content=audio_bytes,
         media_type="audio/mpeg",
         headers={"Content-Disposition": "inline; filename=speech.mp3"},
     )
