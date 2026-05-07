@@ -1,19 +1,25 @@
 import os
 import torch
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import Iterator, Optional
 
+from elevenlabs.client import ElevenLabs
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from peft import PeftModel
 
 # ─── Config ───────────────────────────────────────────────────────────────────
-ADAPTER   = os.getenv("ADAPTER", "robsonrtp/ngananlp-v2")
-BASE_MODEL = "facebook/nllb-200-distilled-1.3B"
-DEVICE    = "cuda" if torch.cuda.is_available() else "cpu"
-HF_TOKEN  = os.getenv("HF_TOKEN", None)
+ADAPTER            = os.getenv("ADAPTER", "robsonrtp/ngananlp-v2")
+BASE_MODEL         = "facebook/nllb-200-distilled-1.3B"
+DEVICE             = "cuda" if torch.cuda.is_available() else "cpu"
+HF_TOKEN           = os.getenv("HF_TOKEN", None)
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", None)
+
+# Default voice: "George" — works well for multilingual content
+DEFAULT_VOICE_ID   = os.getenv("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
 
 LANGUAGES = {
     "por_Latn": "Português",
@@ -90,6 +96,10 @@ class TranslateRequest(BaseModel):
             raise ValueError("num_beams must be between 1 and 8")
         return v
 
+class SpeakRequest(BaseModel):
+    text: str
+    voice_id: Optional[str] = None  # overrides DEFAULT_VOICE_ID if provided
+
 class TranslateResponse(BaseModel):
     translation: str
     src_lang: str
@@ -106,6 +116,7 @@ def root():
         "languages": LANGUAGES,
         "endpoints": {
             "translate": "POST /translate",
+            "speak": "POST /speak",
             "languages": "GET /languages",
             "docs": "GET /docs",
             "health": "GET /health",
@@ -161,4 +172,37 @@ def translate(req: TranslateRequest):
         src_lang=req.src_lang,
         tgt_lang=req.tgt_lang,
         low_confidence=req.tgt_lang in LOW_CONFIDENCE_TARGETS,
+    )
+
+
+# ─── TTS ──────────────────────────────────────────────────────────────────────
+@app.post(
+    "/speak",
+    summary="Text-to-speech via ElevenLabs",
+    response_class=StreamingResponse,
+    responses={200: {"content": {"audio/mpeg": {}}}},
+)
+def speak(req: SpeakRequest):
+    """Convert text to speech and stream back an MP3 audio file."""
+    if not ELEVENLABS_API_KEY:
+        raise HTTPException(status_code=503, detail="ELEVENLABS_API_KEY not configured")
+
+    if not req.text.strip():
+        raise HTTPException(status_code=400, detail="text must not be empty")
+
+    voice_id = req.voice_id or DEFAULT_VOICE_ID
+
+    client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+
+    audio_chunks: Iterator[bytes] = client.text_to_speech.convert(
+        text=req.text,
+        voice_id=voice_id,
+        model_id="eleven_v3",
+        output_format="mp3_44100_128",
+    )
+
+    return StreamingResponse(
+        audio_chunks,
+        media_type="audio/mpeg",
+        headers={"Content-Disposition": "inline; filename=speech.mp3"},
     )
