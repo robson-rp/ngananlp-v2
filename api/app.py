@@ -19,7 +19,7 @@ DEVICE           = "cuda" if torch.cuda.is_available() else "cpu"
 HF_TOKEN         = os.getenv("HF_TOKEN", None)
 
 # Zulu neural voice — Bantu language, sounds natural for Angolan Bantu content
-DEFAULT_TTS_VOICE = os.getenv("TTS_VOICE", "zu-ZA-ThembaNeural")
+DEFAULT_TTS_VOICE = os.getenv("TTS_VOICE", "zu-ZA-ThandoNeural")
 
 TTS_VOICE_MAP: dict[str, str] = {
     "por_Latn": "pt-PT-RaquelNeural",
