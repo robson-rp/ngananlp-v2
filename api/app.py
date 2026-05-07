@@ -1,25 +1,25 @@
+import io
 import os
 import torch
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from elevenlabs.client import ElevenLabs
+import edge_tts
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, field_validator
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from peft import PeftModel
 
 # ─── Config ───────────────────────────────────────────────────────────────────
-ADAPTER            = os.getenv("ADAPTER", "robsonrtp/ngananlp-v2")
-BASE_MODEL         = "facebook/nllb-200-distilled-1.3B"
-DEVICE             = "cuda" if torch.cuda.is_available() else "cpu"
-HF_TOKEN           = os.getenv("HF_TOKEN", None)
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", None)
+ADAPTER          = os.getenv("ADAPTER", "robsonrtp/ngananlp-v2")
+BASE_MODEL       = "facebook/nllb-200-distilled-1.3B"
+DEVICE           = "cuda" if torch.cuda.is_available() else "cpu"
+HF_TOKEN         = os.getenv("HF_TOKEN", None)
 
-# Default voice: "Rachel" (premade, available on free tier)
-DEFAULT_VOICE_ID   = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
+# Zulu neural voice — Bantu language, sounds natural for Angolan Bantu content
+DEFAULT_TTS_VOICE = os.getenv("TTS_VOICE", "zu-ZA-ThembaNeural")
 
 LANGUAGES = {
     "por_Latn": "Português",
@@ -98,7 +98,7 @@ class TranslateRequest(BaseModel):
 
 class SpeakRequest(BaseModel):
     text: str
-    voice_id: Optional[str] = None  # overrides DEFAULT_VOICE_ID if provided
+    voice: Optional[str] = None  # overrides DEFAULT_TTS_VOICE if provided
 
 class TranslateResponse(BaseModel):
     translation: str
@@ -178,29 +178,28 @@ def translate(req: TranslateRequest):
 # ─── TTS ──────────────────────────────────────────────────────────────────────
 @app.post(
     "/speak",
-    summary="Text-to-speech via ElevenLabs",
+    summary="Text-to-speech via edge-tts (Microsoft Neural TTS)",
     responses={200: {"content": {"audio/mpeg": {}}}},
 )
-def speak(req: SpeakRequest):
-    """Convert text to speech and return a complete MP3 audio file."""
-    if not ELEVENLABS_API_KEY:
-        raise HTTPException(status_code=503, detail="ELEVENLABS_API_KEY not configured")
-
+async def speak(req: SpeakRequest):
+    """Convert text to speech and return an MP3 audio file."""
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="text must not be empty")
 
-    voice_id = req.voice_id or DEFAULT_VOICE_ID
+    voice = req.voice or DEFAULT_TTS_VOICE
+    buf = io.BytesIO()
 
-    client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+    try:
+        communicate = edge_tts.Communicate(req.text, voice)
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                buf.write(chunk["data"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"TTS error: {e}")
 
-    audio_chunks = client.text_to_speech.convert(
-        text=req.text,
-        voice_id=voice_id,
-        model_id="eleven_v3",
-        output_format="mp3_44100_128",
-    )
-
-    audio_bytes = b"".join(audio_chunks)
+    audio_bytes = buf.getvalue()
+    if not audio_bytes:
+        raise HTTPException(status_code=502, detail="TTS returned no audio")
 
     return Response(
         content=audio_bytes,

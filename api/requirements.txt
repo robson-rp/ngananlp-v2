@@ -6,4 +6,4 @@ transformers>=4.40.0
 peft>=0.10.0
 sentencepiece
 protobuf
-elevenlabs>=1.0.0
+edge-tts>=6.1.9
