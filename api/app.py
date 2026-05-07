@@ -21,6 +21,10 @@ HF_TOKEN         = os.getenv("HF_TOKEN", None)
 # Zulu neural voice — Bantu language, sounds natural for Angolan Bantu content
 DEFAULT_TTS_VOICE = os.getenv("TTS_VOICE", "zu-ZA-ThembaNeural")
 
+TTS_VOICE_MAP: dict[str, str] = {
+    "por_Latn": "pt-PT-RaquelNeural",
+}
+
 LANGUAGES = {
     "por_Latn": "Português",
     "lin_Latn": "Lingala",
@@ -98,7 +102,8 @@ class TranslateRequest(BaseModel):
 
 class SpeakRequest(BaseModel):
     text: str
-    voice: Optional[str] = None  # overrides DEFAULT_TTS_VOICE if provided
+    lang: Optional[str] = None   # language code (e.g. por_Latn) to auto-select voice
+    voice: Optional[str] = None  # explicit override, takes precedence over lang
 
 class TranslateResponse(BaseModel):
     translation: str
@@ -186,7 +191,7 @@ async def speak(req: SpeakRequest):
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="text must not be empty")
 
-    voice = req.voice or DEFAULT_TTS_VOICE
+    voice = req.voice or TTS_VOICE_MAP.get(req.lang or "", DEFAULT_TTS_VOICE)
     buf = io.BytesIO()
 
     try:
