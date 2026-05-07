@@ -18,8 +18,8 @@ DEVICE             = "cuda" if torch.cuda.is_available() else "cpu"
 HF_TOKEN           = os.getenv("HF_TOKEN", None)
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", None)
 
-# Default voice: "George" — works well for multilingual content
-DEFAULT_VOICE_ID   = os.getenv("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
+# Default voice: "Rachel" (premade, available on free tier)
+DEFAULT_VOICE_ID   = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
 
 LANGUAGES = {
     "por_Latn": "Português",
